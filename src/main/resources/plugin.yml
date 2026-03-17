@@ -1,0 +1,32 @@
+name: immortail
+version: ${version}
+main: dev.dromzeh.immortail.Immortail
+api-version: '1.21'
+description: protect your tamed (furry) friends from dying
+author: dromzeh
+website: https://github.com/dromzeh/immortail
+softdepend:
+  - LuckPerms
+
+commands:
+  immortail:
+    description: manage immortal pets
+    usage: /immortail <list|info|mode|aggro|pets|defuse|reload>
+    permission: immortail.admin
+
+permissions:
+  immortail.protect:
+    description: tamed mobs owned by players with this permission are protected
+    default: false
+  immortail.admin:
+    description: access to /immortail commands
+    default: op
+  immortail.aggro.pvp:
+    description: this player's protected mobs can target/damage players (overrides allow-pvp config)
+    default: false
+  immortail.aggro.tamed:
+    description: this player's protected mobs can target/damage other tamed mobs (overrides allow-tamed config)
+    default: false
+  immortail.aggro.pve:
+    description: this player's protected mobs can target/damage hostile mobs (overrides allow-pve config)
+    default: false

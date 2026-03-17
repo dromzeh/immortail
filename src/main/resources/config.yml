@@ -1,0 +1,28 @@
+# protection mode: "invulnerable" or "resistance"
+#   invulnerable - uses the invulnerable entity tag (true immunity, blocks all damage including /kill)
+#   resistance   - uses resistance 5 potion effect (blocks normal damage, /kill and void still work)
+mode: invulnerable
+
+# aggression settings for protected mobs
+# per-player overrides via LuckPerms permissions (see plugin.yml)
+aggression:
+  # can protected mobs target/damage players?
+  # override: immortail.aggro.pvp
+  allow-pvp: false
+
+  # can protected mobs target/damage other tamed mobs?
+  # override: immortail.aggro.tamed
+  allow-tamed: false
+
+  # can protected mobs target/damage hostile mobs? (PvE)
+  # override: immortail.aggro.pve
+  allow-pve: true
+
+  # can hostile mobs target protected mobs?
+  # reduces visual noise since protected mobs can't die anyway
+  allow-mob-retaliation: true
+
+# which mob types to protect (empty = all tamed mobs)
+# per-player override: immortail.protect.<type> (e.g. immortail.protect.wolf)
+# use minecraft type names: wolf, cat, parrot, horse, donkey, mule, llama, etc.
+protected-types: []
