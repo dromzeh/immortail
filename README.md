@@ -7,7 +7,7 @@ protect your tamed (furry) friends from dying (in minecraft). tested only on pap
 <details>
   <summary>video demo</summary>
 
-https://github.com/user-attachments/assets/5ff6b77b-bb68-456a-8515-a6d5bc5099e2
+https://github.com/user-attachments/assets/d614b113-e895-4e77-bc51-8a4215669183
 
 </details>
 
