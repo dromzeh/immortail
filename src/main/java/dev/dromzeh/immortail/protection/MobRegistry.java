@@ -1,5 +1,6 @@
 package dev.dromzeh.immortail.protection;
 
+import dev.dromzeh.immortail.ChunkRef;
 import dev.dromzeh.immortail.MobRecord;
 import java.io.File;
 import java.io.IOException;
@@ -38,8 +39,14 @@ public class MobRegistry {
         String type = yaml.getString(key + ".type");
         String name = yaml.getString(key + ".name");
         String world = yaml.getString(key + ".world");
-        UUID worldUid = world != null ? UUID.fromString(world) : null;
-        mobs.put(entityUuid, new MobRecord(ownerUuid, type, name, worldUid));
+        ChunkRef lastChunk =
+            world != null
+                ? new ChunkRef(
+                    UUID.fromString(world),
+                    yaml.getInt(key + ".chunk-x"),
+                    yaml.getInt(key + ".chunk-z"))
+                : null;
+        mobs.put(entityUuid, new MobRecord(ownerUuid, type, name, lastChunk));
       } catch (Exception e) {
         plugin.getLogger().warning("invalid mob registry entry: " + key);
       }
@@ -57,8 +64,11 @@ public class MobRegistry {
       if (record.name() != null) {
         yaml.set(key + ".name", record.name());
       }
-      if (record.worldUid() != null) {
-        yaml.set(key + ".world", record.worldUid().toString());
+      ChunkRef lastChunk = record.lastChunk();
+      if (lastChunk != null) {
+        yaml.set(key + ".world", lastChunk.worldUid().toString());
+        yaml.set(key + ".chunk-x", lastChunk.x());
+        yaml.set(key + ".chunk-z", lastChunk.z());
       }
     }
     try {
@@ -80,7 +90,10 @@ public class MobRegistry {
     if (entity.customName() != null) {
       name = PlainTextComponentSerializer.plainText().serialize(entity.customName());
     }
-    MobRecord record = new MobRecord(ownerUuid, type, name, entity.getWorld().getUID());
+    var loc = entity.getLocation();
+    ChunkRef lastChunk =
+        new ChunkRef(entity.getWorld().getUID(), loc.getBlockX() >> 4, loc.getBlockZ() >> 4);
+    MobRecord record = new MobRecord(ownerUuid, type, name, lastChunk);
     if (!record.equals(mobs.get(entity.getUniqueId()))) {
       mobs.put(entity.getUniqueId(), record);
       dirty = true;
@@ -102,7 +115,8 @@ public class MobRegistry {
    */
   public int pruneByWorlds(Set<UUID> liveWorldUids) {
     int before = mobs.size();
-    mobs.values().removeIf(r -> r.worldUid() != null && !liveWorldUids.contains(r.worldUid()));
+    mobs.values()
+        .removeIf(r -> r.lastChunk() != null && !liveWorldUids.contains(r.lastChunk().worldUid()));
     int removed = before - mobs.size();
     if (removed > 0) {
       dirty = true;

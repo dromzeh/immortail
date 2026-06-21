@@ -3,6 +3,7 @@ package dev.dromzeh.immortail.command;
 import static dev.dromzeh.immortail.command.CommandHelper.*;
 
 import dev.dromzeh.immortail.Immortail;
+import dev.dromzeh.immortail.protection.ProtectionManager;
 import java.util.List;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -94,11 +95,23 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
 
   private void handlePrune(CommandSender sender) {
     if (!requireAdmin(sender)) return;
-    int removed = plugin.getProtection().prune();
-    sender.sendMessage(
+    sender.sendMessage(label("pruning tracked mobs..."));
+    plugin.getProtection().prune().thenAccept(result -> sendPruneResult(sender, result));
+  }
+
+  private void sendPruneResult(CommandSender sender, ProtectionManager.PruneResult result) {
+    Component msg =
         Component.text("pruned ", NamedTextColor.GREEN)
-            .append(Component.text(String.valueOf(removed), NamedTextColor.WHITE))
-            .append(Component.text(" stale mob record(s)", NamedTextColor.GREEN)));
+            .append(Component.text(result.removed() + " stale record(s)", NamedTextColor.WHITE));
+    if (result.checked() > 0) {
+      msg =
+          msg.append(Component.text(" (checked ", NamedTextColor.GRAY))
+              .append(Component.text(String.valueOf(result.checked()), NamedTextColor.WHITE))
+              .append(Component.text(" unloaded, ", NamedTextColor.GRAY))
+              .append(Component.text(result.offlineDeleted() + " missing", NamedTextColor.WHITE))
+              .append(Component.text(")", NamedTextColor.GRAY));
+    }
+    sender.sendMessage(msg);
   }
 
   private void handleReload(CommandSender sender) {
