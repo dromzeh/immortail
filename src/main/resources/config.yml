@@ -26,3 +26,9 @@ aggression:
 # per-player override: immortail.protect.<type> (e.g. immortail.protect.wolf)
 # use minecraft type names: wolf, cat, parrot, horse, donkey, mule, llama, etc.
 protected-types: []
+
+# check github for newer versions on startup (and every 6h)
+# compares against the latest release tag, and against the latest commit on the
+# default branch for source builds. result shows in /immortail info and admins are
+# notified on join. set false to disable all outbound requests to the github api.
+check-for-updates: true

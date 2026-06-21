@@ -36,7 +36,7 @@ all commands require `immortail.admin` (default: op).
 | `/immortail` | help |
 | `/immortail list` | all protected/unprotected mobs by type |
 | `/immortail list <player>` | a player's mobs + permission status |
-| `/immortail info` | plugin status, mode, aggro settings, mob counts |
+| `/immortail info` | plugin status, build, update status, mode, aggro settings, mob counts |
 | `/immortail mode [invulnerable\|resistance]` | view or change protection mode |
 | `/immortail aggro` | view global aggression settings |
 | `/immortail aggro <setting> <true\|false>` | change an aggression setting |
@@ -113,6 +113,25 @@ per-player/group overrides via LuckPerms:
 /lp group pvp permission set immortail.aggro.pvp true
 /lp user marcwl permission set immortail.aggro.pvp true
 ```
+
+## update checking
+
+on startup (and every 6h) immortail checks github for newer versions and surfaces the result in `/immortail info`. admins are notified on join if you're behind.
+
+it compares two ways, so it works whether you run a tagged release or a build straight off `main`:
+
+- **release tag** - your version vs the latest github release (`dromzeh/immortail`)
+- **commit** - the commit your jar was built from vs the latest commit on `main`, so it'll tell you you're behind even when there's no new release tag yet
+
+the build commit is baked into the jar at build time (`git rev-parse`); a build with no git info, or one whose commit isn't pushed, just shows what it can. disable all outbound requests with:
+
+```yaml
+# config.yml
+check-for-updates: false
+```
+
+> [!NOTE]
+> the jar version is derived from git automatically (`git describe`) - there's nothing to hand-bump. release builds sitting on a `v*` tag use the tag (`v1.2.0` -> `1.2.0`); other builds use the nearest tag plus commits-ahead (`1.2.0-5-gabc1234`), and fall back to the commit comparison. just push a `v*` tag to cut a release.
 
 ## supported mobs
 
