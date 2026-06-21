@@ -3,7 +3,6 @@ package dev.dromzeh.immortail.command;
 import static dev.dromzeh.immortail.command.CommandHelper.*;
 
 import dev.dromzeh.immortail.Immortail;
-import dev.dromzeh.immortail.protection.ProtectionManager;
 import java.util.List;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -20,6 +19,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
   private final InfoHandler infoHandler;
   private final AggroHandler aggroHandler;
   private final PetsHandler petsHandler;
+  private final PruneHandler pruneHandler;
 
   public ImmortailCommand(Immortail plugin) {
     this.plugin = plugin;
@@ -28,6 +28,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
     this.infoHandler = new InfoHandler(plugin, plugin.getProtection(), plugin.getRegistry());
     this.aggroHandler = new AggroHandler(plugin, plugin.getProtection(), plugin.getPermissions());
     this.petsHandler = new PetsHandler(plugin.getRegistry());
+    this.pruneHandler = new PruneHandler(plugin.getProtection());
   }
 
   @Override
@@ -44,7 +45,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
       case "aggro" -> aggroHandler.execute(sender, args);
       case "pets" -> petsHandler.execute(sender, args);
       case "defuse" -> handleDefuse(sender);
-      case "prune" -> handlePrune(sender);
+      case "prune" -> pruneHandler.execute(sender);
       case "reload" -> handleReload(sender);
       default ->
           sender.sendMessage(
@@ -91,31 +92,6 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
     if (!requireAdmin(sender)) return;
     plugin.getProtection().defuseAll();
     sender.sendMessage(Component.text("all protected mobs defused", NamedTextColor.GREEN));
-  }
-
-  private void handlePrune(CommandSender sender) {
-    if (!requireAdmin(sender)) return;
-    if (plugin.getProtection().isPruning()) {
-      sender.sendMessage(Component.text("a prune is already running", NamedTextColor.RED));
-      return;
-    }
-    sender.sendMessage(label("pruning tracked mobs..."));
-    plugin.getProtection().prune().thenAccept(result -> sendPruneResult(sender, result));
-  }
-
-  private void sendPruneResult(CommandSender sender, ProtectionManager.PruneResult result) {
-    Component msg =
-        Component.text("pruned ", NamedTextColor.GREEN)
-            .append(Component.text(result.removed() + " stale record(s)", NamedTextColor.WHITE));
-    if (result.checked() > 0) {
-      msg =
-          msg.append(Component.text(" (checked ", NamedTextColor.GRAY))
-              .append(Component.text(String.valueOf(result.checked()), NamedTextColor.WHITE))
-              .append(Component.text(" unloaded, ", NamedTextColor.GRAY))
-              .append(Component.text(result.offlineDeleted() + " missing", NamedTextColor.WHITE))
-              .append(Component.text(")", NamedTextColor.GRAY));
-    }
-    sender.sendMessage(msg);
   }
 
   private void handleReload(CommandSender sender) {
