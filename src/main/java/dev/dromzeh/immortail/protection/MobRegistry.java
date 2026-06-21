@@ -94,8 +94,12 @@ public class MobRegistry {
     ChunkRef lastChunk =
         new ChunkRef(entity.getWorld().getUID(), loc.getBlockX() >> 4, loc.getBlockZ() >> 4);
     MobRecord record = new MobRecord(ownerUuid, type, name, lastChunk);
-    if (!record.equals(mobs.get(entity.getUniqueId()))) {
-      mobs.put(entity.getUniqueId(), record);
+
+    // refresh the location in memory every sync, but only persist (dirty) when the protection
+    // identity changes — a wandering pet shouldn't rewrite mobs.yml every tick. forceSave() on
+    // shutdown captures final positions for offline pruning.
+    MobRecord previous = mobs.put(entity.getUniqueId(), record);
+    if (!record.sameProtectionAs(previous)) {
       dirty = true;
     }
   }
