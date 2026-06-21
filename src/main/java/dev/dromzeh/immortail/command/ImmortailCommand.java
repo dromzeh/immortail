@@ -43,6 +43,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
       case "aggro" -> aggroHandler.execute(sender, args);
       case "pets" -> petsHandler.execute(sender, args);
       case "defuse" -> handleDefuse(sender);
+      case "prune" -> handlePrune(sender);
       case "reload" -> handleReload(sender);
       default ->
           sender.sendMessage(
@@ -61,6 +62,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
     help(sender, "aggro [setting|player]", "view or change aggression settings");
     help(sender, "pets <player>", "list a player's mobs with details");
     help(sender, "defuse", "calm all angry protected mobs");
+    help(sender, "prune", "drop tracked mobs from removed/regenerated worlds");
     help(sender, "reload", "re-read config and re-sync");
     sender.sendMessage(Component.text(""));
   }
@@ -90,6 +92,15 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
     sender.sendMessage(Component.text("all protected mobs defused", NamedTextColor.GREEN));
   }
 
+  private void handlePrune(CommandSender sender) {
+    if (!requireAdmin(sender)) return;
+    int removed = plugin.getProtection().prune();
+    sender.sendMessage(
+        Component.text("pruned ", NamedTextColor.GREEN)
+            .append(Component.text(String.valueOf(removed), NamedTextColor.WHITE))
+            .append(Component.text(" stale mob record(s)", NamedTextColor.GREEN)));
+  }
+
   private void handleReload(CommandSender sender) {
     if (!requireAdmin(sender)) return;
     plugin.reloadSettings();
@@ -113,7 +124,8 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
   public List<String> onTabComplete(
       CommandSender sender, Command command, String label, String[] args) {
     if (args.length == 1) {
-      return filter(List.of("list", "info", "mode", "aggro", "pets", "defuse", "reload"), args[0]);
+      return filter(
+          List.of("list", "info", "mode", "aggro", "pets", "defuse", "prune", "reload"), args[0]);
     }
     if (args.length == 2) {
       return switch (args[0].toLowerCase()) {

@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -36,7 +37,9 @@ public class MobRegistry {
         UUID ownerUuid = UUID.fromString(yaml.getString(key + ".owner"));
         String type = yaml.getString(key + ".type");
         String name = yaml.getString(key + ".name");
-        mobs.put(entityUuid, new MobRecord(ownerUuid, type, name));
+        String world = yaml.getString(key + ".world");
+        UUID worldUid = world != null ? UUID.fromString(world) : null;
+        mobs.put(entityUuid, new MobRecord(ownerUuid, type, name, worldUid));
       } catch (Exception e) {
         plugin.getLogger().warning("invalid mob registry entry: " + key);
       }
@@ -53,6 +56,9 @@ public class MobRegistry {
       yaml.set(key + ".type", record.type());
       if (record.name() != null) {
         yaml.set(key + ".name", record.name());
+      }
+      if (record.worldUid() != null) {
+        yaml.set(key + ".world", record.worldUid().toString());
       }
     }
     try {
@@ -74,7 +80,7 @@ public class MobRegistry {
     if (entity.customName() != null) {
       name = PlainTextComponentSerializer.plainText().serialize(entity.customName());
     }
-    MobRecord record = new MobRecord(ownerUuid, type, name);
+    MobRecord record = new MobRecord(ownerUuid, type, name, entity.getWorld().getUID());
     if (!record.equals(mobs.get(entity.getUniqueId()))) {
       mobs.put(entity.getUniqueId(), record);
       dirty = true;
@@ -85,5 +91,22 @@ public class MobRegistry {
     if (mobs.remove(entityUuid) != null) {
       dirty = true;
     }
+  }
+
+  /**
+   * Removes records whose world is no longer present (deleted or regenerated to a new UID). Records
+   * with a null world (legacy entries written before worlds were tracked) are left untouched here —
+   * they re-acquire a world UID the next time their entity loads and re-registers.
+   *
+   * @return number of records removed
+   */
+  public int pruneByWorlds(Set<UUID> liveWorldUids) {
+    int before = mobs.size();
+    mobs.values().removeIf(r -> r.worldUid() != null && !liveWorldUids.contains(r.worldUid()));
+    int removed = before - mobs.size();
+    if (removed > 0) {
+      dirty = true;
+    }
+    return removed;
   }
 }

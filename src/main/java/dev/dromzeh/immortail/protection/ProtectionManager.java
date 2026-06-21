@@ -1,13 +1,16 @@
 package dev.dromzeh.immortail.protection;
 
 import dev.dromzeh.immortail.Immortail;
+import dev.dromzeh.immortail.MobRecord;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Fox;
 import org.bukkit.entity.LivingEntity;
@@ -133,8 +136,21 @@ public class ProtectionManager {
     }
   }
 
+  /**
+   * Stops tracking an entity that has left the world for good (death, despawn, removal, ...). A
+   * no-op when the entity was never tracked, so it is safe to call for any removed entity.
+   */
+  public void untrack(Entity entity) {
+    registry.unregister(entity.getUniqueId());
+  }
+
   public void syncAll() {
     streamOwned().forEach(this::syncProtection);
+
+    int stale = registry.pruneByWorlds(liveWorldUids());
+    if (stale > 0) {
+      plugin.getLogger().info("pruned " + stale + " mob(s) from removed/regenerated worlds");
+    }
 
     for (UUID uuid : List.copyOf(registry.getAll().keySet())) {
       Entity entity = Bukkit.getEntity(uuid);
@@ -144,6 +160,38 @@ public class ProtectionManager {
     }
 
     registry.save();
+  }
+
+  /**
+   * Admin-triggered cleanup. Re-syncs loaded mobs first (so legacy null-world records gain a world
+   * UID), then removes records whose world is gone, plus legacy records that can no longer be
+   * resolved to a loaded entity. Safe because the registry is a rebuildable cache — protection lives
+   * in each entity's PDC, so any over-eager removal self-heals when the chunk reloads.
+   *
+   * @return number of records removed
+   */
+  public int prune() {
+    streamOwned().forEach(this::syncProtection);
+
+    Set<UUID> live = liveWorldUids();
+    int removed = 0;
+    for (UUID uuid : List.copyOf(registry.getAll().keySet())) {
+      MobRecord record = registry.getAll().get(uuid);
+      if (record == null) continue;
+      boolean worldGone = record.worldUid() != null && !live.contains(record.worldUid());
+      boolean orphanLegacy = record.worldUid() == null && Bukkit.getEntity(uuid) == null;
+      if (worldGone || orphanLegacy) {
+        registry.unregister(uuid);
+        removed++;
+      }
+    }
+
+    registry.save();
+    return removed;
+  }
+
+  private Set<UUID> liveWorldUids() {
+    return Bukkit.getWorlds().stream().map(World::getUID).collect(Collectors.toSet());
   }
 
   public void defuseAll() {
