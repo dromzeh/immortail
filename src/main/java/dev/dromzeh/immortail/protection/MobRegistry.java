@@ -1,11 +1,13 @@
 package dev.dromzeh.immortail.protection;
 
+import dev.dromzeh.immortail.ChunkRef;
 import dev.dromzeh.immortail.MobRecord;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -36,7 +38,15 @@ public class MobRegistry {
         UUID ownerUuid = UUID.fromString(yaml.getString(key + ".owner"));
         String type = yaml.getString(key + ".type");
         String name = yaml.getString(key + ".name");
-        mobs.put(entityUuid, new MobRecord(ownerUuid, type, name));
+        String world = yaml.getString(key + ".world");
+        ChunkRef lastChunk =
+            world != null
+                ? new ChunkRef(
+                    UUID.fromString(world),
+                    yaml.getInt(key + ".chunk-x"),
+                    yaml.getInt(key + ".chunk-z"))
+                : null;
+        mobs.put(entityUuid, new MobRecord(ownerUuid, type, name, lastChunk));
       } catch (Exception e) {
         plugin.getLogger().warning("invalid mob registry entry: " + key);
       }
@@ -53,6 +63,12 @@ public class MobRegistry {
       yaml.set(key + ".type", record.type());
       if (record.name() != null) {
         yaml.set(key + ".name", record.name());
+      }
+      ChunkRef lastChunk = record.lastChunk();
+      if (lastChunk != null) {
+        yaml.set(key + ".world", lastChunk.worldUid().toString());
+        yaml.set(key + ".chunk-x", lastChunk.x());
+        yaml.set(key + ".chunk-z", lastChunk.z());
       }
     }
     try {
@@ -74,9 +90,16 @@ public class MobRegistry {
     if (entity.customName() != null) {
       name = PlainTextComponentSerializer.plainText().serialize(entity.customName());
     }
-    MobRecord record = new MobRecord(ownerUuid, type, name);
-    if (!record.equals(mobs.get(entity.getUniqueId()))) {
-      mobs.put(entity.getUniqueId(), record);
+    var loc = entity.getLocation();
+    ChunkRef lastChunk =
+        new ChunkRef(entity.getWorld().getUID(), loc.getBlockX() >> 4, loc.getBlockZ() >> 4);
+    MobRecord record = new MobRecord(ownerUuid, type, name, lastChunk);
+
+    // refresh the location in memory every sync, but only persist (dirty) when the protection
+    // identity changes — a wandering pet shouldn't rewrite mobs.yml every tick. forceSave() on
+    // shutdown captures final positions for offline pruning.
+    MobRecord previous = mobs.put(entity.getUniqueId(), record);
+    if (!record.sameProtectionAs(previous)) {
       dirty = true;
     }
   }
@@ -85,5 +108,23 @@ public class MobRegistry {
     if (mobs.remove(entityUuid) != null) {
       dirty = true;
     }
+  }
+
+  /**
+   * Removes records whose world is no longer present (deleted or regenerated to a new UID). Records
+   * with a null world (legacy entries written before worlds were tracked) are left untouched here —
+   * they re-acquire a world UID the next time their entity loads and re-registers.
+   *
+   * @return number of records removed
+   */
+  public int pruneByWorlds(Set<UUID> liveWorldUids) {
+    int before = mobs.size();
+    mobs.values()
+        .removeIf(r -> r.lastChunk() != null && !liveWorldUids.contains(r.lastChunk().worldUid()));
+    int removed = before - mobs.size();
+    if (removed > 0) {
+      dirty = true;
+    }
+    return removed;
   }
 }

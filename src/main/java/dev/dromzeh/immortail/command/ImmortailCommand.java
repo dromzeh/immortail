@@ -19,6 +19,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
   private final InfoHandler infoHandler;
   private final AggroHandler aggroHandler;
   private final PetsHandler petsHandler;
+  private final PruneHandler pruneHandler;
 
   public ImmortailCommand(Immortail plugin) {
     this.plugin = plugin;
@@ -27,6 +28,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
     this.infoHandler = new InfoHandler(plugin, plugin.getProtection(), plugin.getRegistry());
     this.aggroHandler = new AggroHandler(plugin, plugin.getProtection(), plugin.getPermissions());
     this.petsHandler = new PetsHandler(plugin.getRegistry());
+    this.pruneHandler = new PruneHandler(plugin.getProtection());
   }
 
   @Override
@@ -43,6 +45,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
       case "aggro" -> aggroHandler.execute(sender, args);
       case "pets" -> petsHandler.execute(sender, args);
       case "defuse" -> handleDefuse(sender);
+      case "prune" -> pruneHandler.execute(sender);
       case "reload" -> handleReload(sender);
       default ->
           sender.sendMessage(
@@ -61,6 +64,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
     help(sender, "aggro [setting|player]", "view or change aggression settings");
     help(sender, "pets <player>", "list a player's mobs with details");
     help(sender, "defuse", "calm all angry protected mobs");
+    help(sender, "prune", "drop stale tracked-mob records (dead worlds, deleted mobs)");
     help(sender, "reload", "re-read config and re-sync");
     sender.sendMessage(Component.text(""));
   }
@@ -113,7 +117,8 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
   public List<String> onTabComplete(
       CommandSender sender, Command command, String label, String[] args) {
     if (args.length == 1) {
-      return filter(List.of("list", "info", "mode", "aggro", "pets", "defuse", "reload"), args[0]);
+      return filter(
+          List.of("list", "info", "mode", "aggro", "pets", "defuse", "prune", "reload"), args[0]);
     }
     if (args.length == 2) {
       return switch (args[0].toLowerCase()) {

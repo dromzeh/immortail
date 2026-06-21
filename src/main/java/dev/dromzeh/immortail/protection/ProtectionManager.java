@@ -1,13 +1,24 @@
 package dev.dromzeh.immortail.protection;
 
+import dev.dromzeh.immortail.ChunkRef;
 import dev.dromzeh.immortail.Immortail;
+import dev.dromzeh.immortail.MobRecord;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
 import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Fox;
 import org.bukkit.entity.LivingEntity;
@@ -29,6 +40,11 @@ public class ProtectionManager {
   private final PermissionHelper permissions;
   private final NamespacedKey protectedKey;
 
+  /** Runs a task on the server's main thread; used to marshal async chunk-load callbacks back. */
+  private final Executor mainThread;
+
+  private boolean pruning = false;
+
   public ProtectionManager(
       Immortail plugin,
       MobRegistry registry,
@@ -38,6 +54,7 @@ public class ProtectionManager {
     this.registry = registry;
     this.permissions = permissions;
     this.protectedKey = protectedKey;
+    this.mainThread = task -> Bukkit.getScheduler().runTask(plugin, task);
   }
 
   public static boolean isOwned(Entity entity) {
@@ -133,8 +150,21 @@ public class ProtectionManager {
     }
   }
 
+  /**
+   * Stops tracking an entity that has left the world for good (death, despawn, removal, ...). A
+   * no-op when the entity was never tracked, so it is safe to call for any removed entity.
+   */
+  public void untrack(Entity entity) {
+    registry.unregister(entity.getUniqueId());
+  }
+
   public void syncAll() {
     streamOwned().forEach(this::syncProtection);
+
+    int stale = registry.pruneByWorlds(liveWorldUids());
+    if (stale > 0) {
+      plugin.getLogger().info("pruned " + stale + " mob(s) from removed/regenerated worlds");
+    }
 
     for (UUID uuid : List.copyOf(registry.getAll().keySet())) {
       Entity entity = Bukkit.getEntity(uuid);
@@ -144,6 +174,109 @@ public class ProtectionManager {
     }
 
     registry.save();
+  }
+
+  /** Outcome of a {@link #prune()} run. {@code removed} includes the {@code offlineDeleted}. */
+  public record PruneResult(int removed, int checked, int offlineDeleted) {}
+
+  /** Whether a {@link #prune()} is in flight (its async chunk checks haven't resolved yet). */
+  public boolean isPruning() {
+    return pruning;
+  }
+
+  /**
+   * Admin-triggered cleanup. Re-syncs loaded mobs first (so legacy records gain a location), then:
+   *
+   * <ul>
+   *   <li>drops records whose world is gone (deleted or regenerated to a fresh UID);
+   *   <li>drops legacy records that have no location and can't be seen loaded;
+   *   <li>for mobs whose world exists but that aren't loaded, loads their last-known chunk and
+   *       drops them only if they're genuinely missing — this catches mobs deleted while the server
+   *       was offline, which fire no removal event.
+   * </ul>
+   *
+   * The async chunk work and the registry mutation it feeds are marshalled back onto {@link
+   * #mainThread}. Safe because the registry is a rebuildable cache — protection lives in each
+   * entity's PDC, so any over-eager removal self-heals when the chunk reloads.
+   */
+  public CompletableFuture<PruneResult> prune() {
+    pruning = true;
+    streamOwned().forEach(this::syncProtection);
+
+    int removed = registry.pruneByWorlds(liveWorldUids()); // worlds deleted/regenerated
+
+    // group the remaining unloaded mobs by the chunk we'd load to confirm they still exist
+    Map<ChunkRef, List<UUID>> byChunk = new HashMap<>();
+    for (UUID uuid : List.copyOf(registry.getAll().keySet())) {
+      MobRecord record = registry.getAll().get(uuid);
+      if (record == null) continue;
+      if (record.lastChunk() == null) {
+        if (Bukkit.getEntity(uuid) == null) { // legacy record we can neither locate nor see
+          registry.unregister(uuid);
+          removed++;
+        }
+      } else if (Bukkit.getEntity(uuid)
+          == null) { // world present but mob unloaded — verify on disk
+        byChunk.computeIfAbsent(record.lastChunk(), c -> new ArrayList<>()).add(uuid);
+      }
+    }
+
+    int removedBefore = removed;
+    int checked = byChunk.values().stream().mapToInt(List::size).sum();
+    return verifyMissing(byChunk)
+        .thenApplyAsync(
+            missing -> {
+              missing.stream()
+                  .filter(uuid -> Bukkit.getEntity(uuid) == null) // not reloaded mid-verification
+                  .forEach(registry::unregister);
+              registry.save();
+              return new PruneResult(removedBefore + missing.size(), checked, missing.size());
+            },
+            mainThread)
+        .whenComplete((result, error) -> pruning = false);
+  }
+
+  /**
+   * Loads each candidate chunk once off the main thread and returns the mobs genuinely absent from
+   * it. An unloaded entity hasn't moved since it was last seen, so its recorded chunk is where it
+   * would be if it still existed. The entity scan and everything downstream run on the main thread;
+   * a load failure is treated as "present" so we never remove on uncertainty.
+   */
+  private CompletableFuture<List<UUID>> verifyMissing(Map<ChunkRef, List<UUID>> byChunk) {
+    List<CompletableFuture<List<UUID>>> checks = new ArrayList<>();
+    for (var entry : byChunk.entrySet()) {
+      ChunkRef ref = entry.getKey();
+      List<UUID> candidates = entry.getValue();
+      World world = Bukkit.getWorld(ref.worldUid());
+      if (world == null) continue; // world unloaded since; keep its records
+      if (!world.isChunkGenerated(ref.x(), ref.z())) {
+        checks.add(CompletableFuture.completedFuture(candidates)); // chunk gone → mobs gone
+        continue;
+      }
+      checks.add(
+          world
+              .getChunkAtAsync(ref.x(), ref.z(), false)
+              .thenApplyAsync(chunk -> absentIn(chunk, candidates), mainThread)
+              .exceptionally(error -> List.of())); // couldn't load → assume present
+    }
+    return CompletableFuture.allOf(checks.toArray(CompletableFuture[]::new))
+        .thenApply(
+            ignored ->
+                checks.stream().flatMap(c -> c.join().stream()).collect(Collectors.toList()));
+  }
+
+  /** Of {@code candidates}, the UUIDs not present among the loaded chunk's entities. */
+  private List<UUID> absentIn(Chunk chunk, List<UUID> candidates) {
+    if (chunk == null) return List.of();
+    Set<UUID> present = new HashSet<>();
+    for (Entity entity : chunk.getEntities()) {
+      present.add(entity.getUniqueId());
+    }
+    return candidates.stream().filter(uuid -> !present.contains(uuid)).collect(Collectors.toList());
+  }
+
+  private Set<UUID> liveWorldUids() {
+    return Bukkit.getWorlds().stream().map(World::getUID).collect(Collectors.toSet());
   }
 
   public void defuseAll() {
