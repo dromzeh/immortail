@@ -32,8 +32,12 @@ class InfoHandler {
       luckperms = false;
     }
 
+    var build = plugin.getUpdateChecker().buildInfo();
+
     header(sender, "plugin info");
     kv(sender, "  version: ", plugin.getDescription().getVersion());
+    kv(sender, "  build: ", build.commitShort() + " (" + build.branch() + ")");
+    sender.sendMessage(label("  update: ").append(plugin.getUpdateChecker().status().infoLine()));
     kv(sender, "  author: ", String.join(", ", plugin.getDescription().getAuthors()));
     kv(sender, "  mode: ", plugin.getMode());
     sender.sendMessage(

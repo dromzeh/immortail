@@ -5,6 +5,8 @@ import dev.dromzeh.immortail.listener.EntityListener;
 import dev.dromzeh.immortail.protection.MobRegistry;
 import dev.dromzeh.immortail.protection.PermissionHelper;
 import dev.dromzeh.immortail.protection.ProtectionManager;
+import dev.dromzeh.immortail.update.UpdateChecker;
+import dev.dromzeh.immortail.update.UpdateNotifier;
 import java.util.List;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
@@ -22,6 +24,7 @@ public class Immortail extends JavaPlugin {
   private MobRegistry registry;
   private PermissionHelper permissions;
   private ProtectionManager protection;
+  private UpdateChecker updateChecker;
 
   public String getMode() {
     return mode;
@@ -59,6 +62,10 @@ public class Immortail extends JavaPlugin {
     return protection;
   }
 
+  public UpdateChecker getUpdateChecker() {
+    return updateChecker;
+  }
+
   public void setMode(String mode) {
     this.mode = mode;
     getConfig().set("mode", mode);
@@ -93,6 +100,17 @@ public class Immortail extends JavaPlugin {
     getCommand("immortail").setTabCompleter(cmd);
 
     Bukkit.getScheduler().runTaskTimer(this, protection::syncAll, 20L, 100L);
+
+    updateChecker = new UpdateChecker(this);
+    if (getConfig().getBoolean("check-for-updates", true)) {
+      getServer().getPluginManager().registerEvents(new UpdateNotifier(updateChecker), this);
+      updateChecker.checkAsync();
+      long sixHours = 6L * 60L * 60L * 20L;
+      Bukkit.getScheduler()
+          .runTaskTimerAsynchronously(this, updateChecker::check, sixHours, sixHours);
+    } else {
+      updateChecker.disable();
+    }
 
     getLogger().info("immortail loaded - mode: " + mode);
   }
