@@ -63,7 +63,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
     help(sender, "aggro [setting|player]", "view or change aggression settings");
     help(sender, "pets <player>", "list a player's mobs with details");
     help(sender, "defuse", "calm all angry protected mobs");
-    help(sender, "prune", "drop tracked mobs from removed/regenerated worlds");
+    help(sender, "prune", "drop stale tracked-mob records (dead worlds, deleted mobs)");
     help(sender, "reload", "re-read config and re-sync");
     sender.sendMessage(Component.text(""));
   }
@@ -95,6 +95,10 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
 
   private void handlePrune(CommandSender sender) {
     if (!requireAdmin(sender)) return;
+    if (plugin.getProtection().isPruning()) {
+      sender.sendMessage(Component.text("a prune is already running", NamedTextColor.RED));
+      return;
+    }
     sender.sendMessage(label("pruning tracked mobs..."));
     plugin.getProtection().prune().thenAccept(result -> sendPruneResult(sender, result));
   }
