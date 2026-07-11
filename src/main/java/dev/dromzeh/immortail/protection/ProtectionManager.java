@@ -3,6 +3,10 @@ package dev.dromzeh.immortail.protection;
 import dev.dromzeh.immortail.ChunkRef;
 import dev.dromzeh.immortail.Immortail;
 import dev.dromzeh.immortail.MobRecord;
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,6 +48,9 @@ public class ProtectionManager {
   private final Executor mainThread;
 
   private boolean pruning = false;
+
+  /** World uids read from uid.dat files in the world container; lazily (re)scanned and cached. */
+  private final Set<UUID> diskWorldUids = new HashSet<>();
 
   public ProtectionManager(
       Immortail plugin,
@@ -161,7 +168,7 @@ public class ProtectionManager {
   public void syncAll() {
     streamOwned().forEach(this::syncProtection);
 
-    int stale = registry.pruneByWorlds(liveWorldUids());
+    int stale = registry.pruneByWorlds(presentWorldUids());
     if (stale > 0) {
       plugin.getLogger().info("pruned " + stale + " mob(s) from removed/regenerated worlds");
     }
@@ -203,7 +210,8 @@ public class ProtectionManager {
     pruning = true;
     streamOwned().forEach(this::syncProtection);
 
-    int removed = registry.pruneByWorlds(liveWorldUids()); // worlds deleted/regenerated
+    diskWorldUids.clear(); // a manual prune answers with a fresh look at disk, not the cache
+    int removed = registry.pruneByWorlds(presentWorldUids()); // worlds deleted/regenerated
 
     // group the remaining unloaded mobs by the chunk we'd load to confirm they still exist
     Map<ChunkRef, List<UUID>> byChunk = new HashMap<>();
@@ -275,8 +283,39 @@ public class ProtectionManager {
     return candidates.stream().filter(uuid -> !present.contains(uuid)).collect(Collectors.toList());
   }
 
-  private Set<UUID> liveWorldUids() {
-    return Bukkit.getWorlds().stream().map(World::getUID).collect(Collectors.toSet());
+  /**
+   * The uids of every world that still exists: loaded worlds plus world folders on disk. An
+   * unloaded world keeps its uid.dat, so unloading one (e.g. via a world-management plugin) is not
+   * existence loss — only deleting or regenerating the folder is. The disk scan only runs when a
+   * record references a uid we can't otherwise account for, and its result is cached.
+   */
+  private Set<UUID> presentWorldUids() {
+    Set<UUID> present = new HashSet<>();
+    Bukkit.getWorlds().forEach(world -> present.add(world.getUID()));
+    present.addAll(diskWorldUids);
+    boolean unknown =
+        registry.getAll().values().stream()
+            .anyMatch(r -> r.lastChunk() != null && !present.contains(r.lastChunk().worldUid()));
+    if (unknown) {
+      rescanDiskWorlds();
+      present.addAll(diskWorldUids);
+    }
+    return present;
+  }
+
+  private void rescanDiskWorlds() {
+    diskWorldUids.clear();
+    File[] folders = Bukkit.getWorldContainer().listFiles(File::isDirectory);
+    if (folders == null) return;
+    for (File folder : folders) {
+      File uidFile = new File(folder, "uid.dat");
+      if (!uidFile.isFile()) continue;
+      try (DataInputStream in = new DataInputStream(new FileInputStream(uidFile))) {
+        diskWorldUids.add(new UUID(in.readLong(), in.readLong()));
+      } catch (IOException e) {
+        // unreadable uid.dat: treat the world as absent; worst case records self-heal on load
+      }
+    }
   }
 
   public void defuseAll() {

@@ -117,10 +117,11 @@ public class MobRegistry {
    *
    * @return number of records removed
    */
-  public int pruneByWorlds(Set<UUID> liveWorldUids) {
+  public int pruneByWorlds(Set<UUID> presentWorldUids) {
     int before = mobs.size();
     mobs.values()
-        .removeIf(r -> r.lastChunk() != null && !liveWorldUids.contains(r.lastChunk().worldUid()));
+        .removeIf(
+            r -> r.lastChunk() != null && !presentWorldUids.contains(r.lastChunk().worldUid()));
     int removed = before - mobs.size();
     if (removed > 0) {
       dirty = true;
