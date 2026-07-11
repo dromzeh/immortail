@@ -138,6 +138,8 @@ check-for-updates: false
 
 anything that implements bukkit's `Tameable` interface (wolves, cats, parrots, horses, donkeys, mules, llamas, camels, etc.) plus foxes via the trust system. arctic foxes are included under the `fox` type.
 
+happy ghasts (1.21.6+) are supported while harnessed. they have no vanilla owner, so whoever equips the harness (or first interacts with an already-harnessed, unclaimed one - e.g. dispenser-equipped) counts as the owner for the permission model; shearing the harness off ends ownership. the type for `immortail.protect.<type>` and `protected-types` is `happy_ghast`.
+
 ## building
 
 requires java 21.

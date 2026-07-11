@@ -25,10 +25,13 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Fox;
+import org.bukkit.entity.HappyGhast;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Tameable;
+import org.bukkit.inventory.EntityEquipment;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -38,6 +41,14 @@ public class ProtectionManager {
   private static final PotionEffect IMMORTAL_EFFECT =
       new PotionEffect(
           PotionEffectType.RESISTANCE, PotionEffect.INFINITE_DURATION, 4, true, false, false);
+
+  /**
+   * Who equipped a happy ghast's harness. Ghasts have no vanilla owner to read back, so we record
+   * one ourselves in the entity's PDC — the same self-healing pattern as the protected flag. Built
+   * from the raw namespace because {@link #isOwned}/{@link #getOwner} are static.
+   */
+  private static final NamespacedKey HARNESS_OWNER_KEY =
+      new NamespacedKey("immortail", "harness-owner");
 
   private final Immortail plugin;
   private final MobRegistry registry;
@@ -67,6 +78,7 @@ public class ProtectionManager {
   public static boolean isOwned(Entity entity) {
     if (entity instanceof Tameable t) return t.isTamed() && t.getOwner() != null;
     if (entity instanceof Fox f) return f.getFirstTrustedPlayer() != null;
+    if (entity instanceof HappyGhast g) return hasHarness(g) && harnessOwner(g) != null;
     return false;
   }
 
@@ -77,7 +89,27 @@ public class ProtectionManager {
     if (entity instanceof Fox f && f.getFirstTrustedPlayer() != null) {
       return (OfflinePlayer) f.getFirstTrustedPlayer();
     }
+    if (entity instanceof HappyGhast g && hasHarness(g)) {
+      UUID owner = harnessOwner(g);
+      if (owner != null) return Bukkit.getOfflinePlayer(owner);
+    }
     return null;
+  }
+
+  private static boolean hasHarness(HappyGhast ghast) {
+    EntityEquipment equipment = ghast.getEquipment();
+    return equipment != null && !equipment.getItem(EquipmentSlot.BODY).getType().isAir();
+  }
+
+  private static UUID harnessOwner(HappyGhast ghast) {
+    String uuid =
+        ghast.getPersistentDataContainer().get(HARNESS_OWNER_KEY, PersistentDataType.STRING);
+    if (uuid == null) return null;
+    try {
+      return UUID.fromString(uuid);
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
   }
 
   public NamespacedKey getProtectedKey() {
@@ -116,6 +148,26 @@ public class ProtectionManager {
     } else {
       removeProtection(living);
     }
+  }
+
+  /**
+   * Called a tick after a player interacts with a happy ghast, once the click's outcome (harness
+   * equipped, harness sheared off, mounted) is visible. The player who equips the harness — or the
+   * first to interact with a harnessed, unclaimed one (e.g. dispenser-equipped) — is recorded as
+   * owner; the harness coming off ends ownership.
+   */
+  public void syncHappyGhast(HappyGhast ghast, Player player) {
+    if (!hasHarness(ghast)) {
+      ghast.getPersistentDataContainer().remove(HARNESS_OWNER_KEY);
+      removeProtection(ghast);
+      return;
+    }
+    if (harnessOwner(ghast) == null) {
+      ghast
+          .getPersistentDataContainer()
+          .set(HARNESS_OWNER_KEY, PersistentDataType.STRING, player.getUniqueId().toString());
+    }
+    syncProtection(ghast);
   }
 
   private void removeProtection(LivingEntity living) {
@@ -185,6 +237,9 @@ public class ProtectionManager {
         // ownership can end without an event we see (untamed by another plugin, harness gone):
         // revoke rather than orphan an invulnerable mob — syncProtection never reaches its
         // removal branch for unowned entities
+        if (entity instanceof HappyGhast ghast) {
+          ghast.getPersistentDataContainer().remove(HARNESS_OWNER_KEY);
+        }
         removeProtection(living);
       } else if (!isProtected(entity)) {
         registry.unregister(uuid);

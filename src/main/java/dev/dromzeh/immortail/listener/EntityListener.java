@@ -5,6 +5,7 @@ import dev.dromzeh.immortail.protection.PermissionHelper;
 import dev.dromzeh.immortail.protection.ProtectionManager;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.HappyGhast;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Tameable;
 import org.bukkit.event.EventHandler;
@@ -15,6 +16,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityTameEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.world.EntitiesLoadEvent;
 
 public class EntityListener implements Listener {
@@ -100,6 +102,22 @@ public class EntityListener implements Listener {
     // a chunk unloading is not a removal: the entity still exists, just not in memory
     if (event.getCause() == EntityRemoveEvent.Cause.UNLOAD) return;
     protection.untrack(event.getEntity());
+  }
+
+  @EventHandler
+  public void onHappyGhastInteract(PlayerInteractEntityEvent event) {
+    if (!(event.getRightClicked() instanceof HappyGhast ghast)) return;
+    // fires for every right click (equip, shear, mount, feed); what the click did is only
+    // visible next tick, and syncHappyGhast sorts out ownership from the outcome
+    Bukkit.getScheduler()
+        .runTaskLater(
+            plugin,
+            () -> {
+              if (ghast.isValid()) {
+                protection.syncHappyGhast(ghast, event.getPlayer());
+              }
+            },
+            1L);
   }
 
   @EventHandler
