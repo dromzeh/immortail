@@ -114,13 +114,18 @@ public class ProtectionManager {
       registry.register(entity, owner.getUniqueId());
       clearInvalidTargets(entity);
     } else {
-      if (pdc.has(protectedKey, PersistentDataType.BYTE)) {
-        pdc.remove(protectedKey);
-        entity.setInvulnerable(false);
-        living.removePotionEffect(PotionEffectType.RESISTANCE);
-      }
-      registry.unregister(entity.getUniqueId());
+      removeProtection(living);
     }
+  }
+
+  private void removeProtection(LivingEntity living) {
+    var pdc = living.getPersistentDataContainer();
+    if (pdc.has(protectedKey, PersistentDataType.BYTE)) {
+      pdc.remove(protectedKey);
+      living.setInvulnerable(false);
+      living.removePotionEffect(PotionEffectType.RESISTANCE);
+    }
+    registry.unregister(living.getUniqueId());
   }
 
   private void applyProtectionMode(Entity entity, LivingEntity living) {
@@ -175,7 +180,13 @@ public class ProtectionManager {
 
     for (UUID uuid : List.copyOf(registry.getAll().keySet())) {
       Entity entity = Bukkit.getEntity(uuid);
-      if (entity != null && !isProtected(entity)) {
+      if (entity == null) continue;
+      if (!isOwned(entity) && entity instanceof LivingEntity living) {
+        // ownership can end without an event we see (untamed by another plugin, harness gone):
+        // revoke rather than orphan an invulnerable mob — syncProtection never reaches its
+        // removal branch for unowned entities
+        removeProtection(living);
+      } else if (!isProtected(entity)) {
         registry.unregister(uuid);
       }
     }
