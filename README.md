@@ -43,6 +43,7 @@ all commands require `immortail.admin` (default: op).
 | `/immortail aggro <player>` | view a player's effective aggression (global + perm overrides) |
 | `/immortail pets <player>` | list a player's mobs with names, UUIDs, status |
 | `/immortail defuse` | immediately calm all angry protected mobs |
+| `/immortail prune` | drop stale tracked-mob records (dead worlds, offline-deleted mobs) |
 | `/immortail reload` | re-read config + force re-sync all mobs |
 
 ## permissions

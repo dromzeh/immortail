@@ -11,7 +11,7 @@ softdepend:
 commands:
   immortail:
     description: manage immortal pets
-    usage: /immortail <list|info|mode|aggro|pets|defuse|reload>
+    usage: /immortail <list|info|mode|aggro|pets|defuse|prune|reload>
     permission: immortail.admin
 
 permissions:

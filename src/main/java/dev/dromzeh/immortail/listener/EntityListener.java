@@ -12,6 +12,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityTameEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.world.EntitiesLoadEvent;
@@ -92,6 +93,13 @@ public class EntityListener implements Listener {
         protection.syncProtection(entity);
       }
     }
+  }
+
+  @EventHandler
+  public void onEntityRemove(EntityRemoveEvent event) {
+    // a chunk unloading is not a removal: the entity still exists, just not in memory
+    if (event.getCause() == EntityRemoveEvent.Cause.UNLOAD) return;
+    protection.untrack(event.getEntity());
   }
 
   @EventHandler
