@@ -234,11 +234,13 @@ public class ProtectionManager {
     return verifyMissing(byChunk)
         .thenApplyAsync(
             missing -> {
-              missing.stream()
-                  .filter(uuid -> Bukkit.getEntity(uuid) == null) // not reloaded mid-verification
-                  .forEach(registry::unregister);
+              List<UUID> stillGone =
+                  missing.stream()
+                      .filter(uuid -> Bukkit.getEntity(uuid) == null) // reloaded mid-verification
+                      .collect(Collectors.toList());
+              stillGone.forEach(registry::unregister);
               registry.save();
-              return new PruneResult(removedBefore + missing.size(), checked, missing.size());
+              return new PruneResult(removedBefore + stillGone.size(), checked, stillGone.size());
             },
             mainThread)
         .whenComplete((result, error) -> pruning = false);
