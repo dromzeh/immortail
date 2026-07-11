@@ -2,6 +2,7 @@ package dev.dromzeh.immortail.command;
 
 import static dev.dromzeh.immortail.command.CommandHelper.*;
 
+import dev.dromzeh.immortail.Immortail;
 import dev.dromzeh.immortail.protection.ProtectionManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -9,9 +10,11 @@ import org.bukkit.command.CommandSender;
 
 class PruneHandler {
 
+  private final Immortail plugin;
   private final ProtectionManager protection;
 
-  PruneHandler(ProtectionManager protection) {
+  PruneHandler(Immortail plugin, ProtectionManager protection) {
+    this.plugin = plugin;
     this.protection = protection;
   }
 
@@ -22,7 +25,19 @@ class PruneHandler {
       return;
     }
     sender.sendMessage(label("pruning tracked mobs..."));
-    protection.prune().thenAccept(result -> sendResult(sender, result));
+    protection
+        .prune()
+        .whenComplete(
+            (result, error) -> {
+              // an unhandled future error would otherwise vanish, leaving the sender waiting
+              if (error != null) {
+                plugin.getLogger().warning("prune failed: " + error);
+                sender.sendMessage(
+                    Component.text("prune failed - see console", NamedTextColor.RED));
+              } else {
+                sendResult(sender, result);
+              }
+            });
   }
 
   private void sendResult(CommandSender sender, ProtectionManager.PruneResult result) {

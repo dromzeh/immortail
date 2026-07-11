@@ -28,7 +28,7 @@ public class ImmortailCommand implements CommandExecutor, TabCompleter {
     this.infoHandler = new InfoHandler(plugin, plugin.getProtection(), plugin.getRegistry());
     this.aggroHandler = new AggroHandler(plugin, plugin.getProtection(), plugin.getPermissions());
     this.petsHandler = new PetsHandler(plugin.getRegistry());
-    this.pruneHandler = new PruneHandler(plugin.getProtection());
+    this.pruneHandler = new PruneHandler(plugin, plugin.getProtection());
   }
 
   @Override

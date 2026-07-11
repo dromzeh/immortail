@@ -208,42 +208,47 @@ public class ProtectionManager {
    */
   public CompletableFuture<PruneResult> prune() {
     pruning = true;
-    streamOwned().forEach(this::syncProtection);
+    try {
+      streamOwned().forEach(this::syncProtection);
 
-    diskWorldUids.clear(); // a manual prune answers with a fresh look at disk, not the cache
-    int removed = registry.pruneByWorlds(presentWorldUids()); // worlds deleted/regenerated
+      diskWorldUids.clear(); // a manual prune answers with a fresh look at disk, not the cache
+      int removed = registry.pruneByWorlds(presentWorldUids()); // worlds deleted/regenerated
 
-    // group the remaining unloaded mobs by the chunk we'd load to confirm they still exist
-    Map<ChunkRef, List<UUID>> byChunk = new HashMap<>();
-    for (UUID uuid : List.copyOf(registry.getAll().keySet())) {
-      MobRecord record = registry.getAll().get(uuid);
-      if (record == null) continue;
-      if (record.lastChunk() == null) {
-        if (Bukkit.getEntity(uuid) == null) { // legacy record we can neither locate nor see
-          registry.unregister(uuid);
-          removed++;
+      // group the remaining unloaded mobs by the chunk we'd load to confirm they still exist
+      Map<ChunkRef, List<UUID>> byChunk = new HashMap<>();
+      for (UUID uuid : List.copyOf(registry.getAll().keySet())) {
+        MobRecord record = registry.getAll().get(uuid);
+        if (record == null) continue;
+        if (record.lastChunk() == null) {
+          if (Bukkit.getEntity(uuid) == null) { // legacy record we can neither locate nor see
+            registry.unregister(uuid);
+            removed++;
+          }
+        } else if (Bukkit.getEntity(uuid)
+            == null) { // world present but mob unloaded — verify on disk
+          byChunk.computeIfAbsent(record.lastChunk(), c -> new ArrayList<>()).add(uuid);
         }
-      } else if (Bukkit.getEntity(uuid)
-          == null) { // world present but mob unloaded — verify on disk
-        byChunk.computeIfAbsent(record.lastChunk(), c -> new ArrayList<>()).add(uuid);
       }
-    }
 
-    int removedBefore = removed;
-    int checked = byChunk.values().stream().mapToInt(List::size).sum();
-    return verifyMissing(byChunk)
-        .thenApplyAsync(
-            missing -> {
-              List<UUID> stillGone =
-                  missing.stream()
-                      .filter(uuid -> Bukkit.getEntity(uuid) == null) // reloaded mid-verification
-                      .collect(Collectors.toList());
-              stillGone.forEach(registry::unregister);
-              registry.save();
-              return new PruneResult(removedBefore + stillGone.size(), checked, stillGone.size());
-            },
-            mainThread)
-        .whenComplete((result, error) -> pruning = false);
+      int removedBefore = removed;
+      int checked = byChunk.values().stream().mapToInt(List::size).sum();
+      return verifyMissing(byChunk)
+          .thenApplyAsync(
+              missing -> {
+                List<UUID> stillGone =
+                    missing.stream()
+                        .filter(uuid -> Bukkit.getEntity(uuid) == null) // reloaded mid-verification
+                        .collect(Collectors.toList());
+                stillGone.forEach(registry::unregister);
+                registry.save();
+                return new PruneResult(removedBefore + stillGone.size(), checked, stillGone.size());
+              },
+              mainThread)
+          .whenComplete((result, error) -> pruning = false);
+    } catch (RuntimeException e) {
+      pruning = false; // don't wedge the command when the synchronous half throws
+      throw e;
+    }
   }
 
   /**
